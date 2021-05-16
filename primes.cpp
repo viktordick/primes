@@ -1,35 +1,163 @@
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <chrono>
 #include <algorithm>
+#include <locale>
+#include <string>
+#include <sstream>
+#include <iomanip>
 
 typedef unsigned long int T;
 typedef std::chrono::steady_clock _clock;
 typedef std::chrono::duration<double> duration;
 
+const size_t BATCHSIZE = 16*1024*1024;
+
 T sqr(T x) {
     return x*x;
 };
 
+class Batch {
+    std::vector<T> *data;
+    const int myidx;
 
-const T target = 200000000;
+    std::string path() const {
+        std::stringstream s;
+        s << "result/" << std::setfill('0') << std::setw(8)
+            << std::hex << this->myidx;
+        return s.str();
+    }
+
+    public:
+
+    Batch(int _myidx, std::vector<T> *_data)
+        :data(_data)
+         ,myidx(_myidx)
+    {
+    };
+
+    bool is_loaded() const {
+        return this->data != nullptr;
+    };
+
+    size_t size() const {
+        return this->data->size();
+    };
+
+    T& operator[](size_t idx) {
+        return (*(this->data))[idx];
+    }
+
+    void push_back(T value) {
+        this->data->push_back(value);
+    }
+
+    void load(std::vector<T> *data) {
+        std::cout << "load " << this->myidx << std::endl;
+        if (this->data != nullptr) {
+            throw;
+        };
+        if (data == nullptr)
+            throw;
+        this->data = data;
+        std::ifstream f(this->path());
+        data->resize(BATCHSIZE);
+        f.read((char*)&((*data)[0]), BATCHSIZE * sizeof(T));
+        f.close();
+    };
+
+    std::vector<T>* unload() {
+        std::cout << "unload " << this->myidx << std::endl;
+        if (this->data == nullptr) {
+            throw;
+        }
+        std::vector<T>* result = this->data;
+        this->data = nullptr;
+        return result;
+    };
+
+    void store() {
+        std::ofstream f(this->path(), std::ios::binary);
+        if (this->data == nullptr)
+            throw;
+        f.write((const char*)&((*(this->data))[0]), this->data->size() * sizeof(T));
+        f.close();
+    };
+};
+
+class PrimeStorage {
+    std::vector<Batch> primes;
+    std::vector< std::vector<T> > pool;
+    size_t count;
+
+    public:
+
+    PrimeStorage()
+        :pool(16), count(0)
+    {
+    }
+
+    size_t size() const {
+        return this->count;
+    };
+    T& operator[](size_t idx) {
+        const auto s = BATCHSIZE;
+        auto &P = this->primes;
+        const int i = idx/s;
+        const int j = idx%s;
+        if (!P[i].is_loaded()) {
+            for (int k=i-1; k!=i; k--) {
+                if (k == -1)
+                    k = P.size()-2;
+                if (k == i)
+                    throw;
+                if (P[k].is_loaded()) {
+                    P[i].load(P[k].unload());
+                    break;
+                }
+            }
+        }
+        return P[i][j];
+    };
+    void append(T value) {
+        auto &P = this->primes;
+        if (this->count % BATCHSIZE == 0) {
+            if (!P.empty())
+                P[P.size()-1].store();
+            std::vector<T> *storage = nullptr;
+            if (P.size() < this->pool.size()) {
+                storage = &(this->pool[P.size()]);
+                storage->reserve(BATCHSIZE);
+            } else {
+                storage = P[P.size()-1].unload();
+            }
+            P.push_back(Batch(P.size(), storage));
+        }
+        P[P.size()-1].push_back(value);
+        this->count++;
+    }
+
+    size_t batches() {
+        return this->primes.size();
+    }
+};
 
 class PrimeCalculator {
-    std::vector<T> primes;
+    PrimeStorage primes;
     std::vector<bool> candidates;
     // Means we have computed all primes until primes[cur]^2
-    T cur;
+    size_t cur;
 
     std::vector<duration> times{2};
 
     public:
 
     PrimeCalculator() {
-        this->primes.reserve(2*target);
-        this->primes.resize(3);
-        this->primes[0] = 3;
-        this->primes[1] = 5;
-        this->primes[2] = 7;
+        auto &P = this->primes;
+        P.append(3);
+        P.append(5);
+        P.append(7);
         this->cur = 0;
     };
 
@@ -38,30 +166,33 @@ class PrimeCalculator {
         // this->candidates contains booleans for all these candidates, which
         // are set to true at first and then switched to false if they are a
         // multiple of a known prime after all.
-        const T start = sqr(this->primes[this->cur]) + 2;
-        const T new_cur = std::min(this->cur + 100, T(this->primes.size())-1);
-        const T end = sqr(this->primes[new_cur]);
-        this->candidates.resize((end-start)/2);
-        for (T i = 0; i<this->candidates.size(); i++)
-            this->candidates[i] = true;
+        auto &P = this->primes;
+        auto &B = this->candidates;
+
+        const T start = sqr(P[this->cur]) + 2;
+        const T new_cur = std::min(this->cur + 100, P.size()-1);
+        const T end = sqr(P[new_cur]);
+        B.resize((end-start)/2);
+        for (size_t i = 0; i<B.size(); i++)
+            B[i] = true;
 
         auto t = _clock::now();
-        for (auto p: this->primes) {
-            T excluded = p*((start-1)/p+1);  // first multiple of p in range
+        for (size_t i=0; i<P.size(); i++) {
+            const auto p = P[i];
+            T first = p*((start-1)/p+1);  // first multiple of p in range
             // we only check odd numbers
-            if (excluded % 2 == 0)
-                excluded += p;
-            T index = (excluded - start)/2;
-            for (; index < this->candidates.size(); index += p) {
-                this->candidates[index] = false;
+            if (first % 2 == 0)
+                first += p;
+            for (size_t idx = (first-start)/2; idx < B.size(); idx += p) {
+                B[idx] = false;
             }
         };
         this->times[0] += (_clock::now() - t);
 
         t = _clock::now();
-        for (T i=0; i<this->candidates.size(); i++)
-            if (this->candidates[i]) {
-                this->primes.push_back(start+2*i);
+        for (T i=0; i<B.size(); i++)
+            if (B[i]) {
+                P.append(start+2*i);
             }
         this->times[1] += _clock::now() - t;
         this->cur = new_cur;
@@ -70,18 +201,26 @@ class PrimeCalculator {
     void print() {
         for (int i=0; i<2; i++)
             std::cout << this->times[i].count() << std::endl;
+        /*
+        for (size_t i=0; i<this->primes.size(); i++)
+            std::cout << this->primes[i] << std::endl;
+            */
     }
     void extend_until() {
-        while (this->primes.size() < target) {
+        while (true) {
             this->extend();
-            std::cout << this->primes.size() << " primes below "
-                << sqr(this->primes[this->cur]) << std::endl;
+            std::cout
+                << this->primes.size() << " primes below "
+                << sqr(this->primes[this->cur])
+                << ", " << this->primes.batches() << " batches"
+                << std::endl;
         }
     }
 
 };
 
 int main(int argc, char** argv) {
+    std::cout.imbue(std::locale(""));
     PrimeCalculator p;
     p.extend_until();
     p.print();

@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
 #include <vector>
 #include <chrono>
 #include <algorithm>
@@ -16,11 +18,12 @@ T sqr(T x) {
 
 class PrimeCalculator {
     std::vector<uint32_t> P;
+    std::vector<T> all_primes;
     // candidates are the odd numbers from p_{c}^2 to p_{c+1}^2, excluding.
     // C contains booleans for all these candidates, which are set to true at
     // first and then switched to false if they are a multiple of a known prime
     // after all.
-    std::vector<bool> C;
+    std::vector<char> C;
     // Means we have computed all primes until primes[cur]^2
     size_t cur;
 
@@ -30,12 +33,26 @@ class PrimeCalculator {
 
     PrimeCalculator() {
         P.reserve(16*1024*1024);
+        // all_primes.reserve(16*1024*1024);
+        all_primes.push_back(2);
+        all_primes.push_back(3);
+        all_primes.push_back(5);
+        all_primes.push_back(7);
         P.push_back(3);
         P.push_back(5);
         P.push_back(7);
         cur = 0;
         count = 4;
     };
+
+    void flush() {
+        std::ofstream f("primes.dat", std::ios::binary | std::ios::in);
+        T target = (count - all_primes.size()) * sizeof(T);
+        f.seekp(target);
+        f.write((const char*)&(all_primes[0]), all_primes.size() * sizeof(T));
+        f.close();
+        all_primes.clear();
+    }
 
     void extend() {
 
@@ -64,9 +81,14 @@ class PrimeCalculator {
         for (T i=0; i<C.size(); i++)
             if (C[i]) {
                 count++;
-                auto p = start + 2*i;
+                const auto p = start + 2*i;
                 if (P.size() < P.capacity() && uint32_t(p) == p)
-                    P.push_back(start+2*i);
+                    P.push_back(p);
+                /*
+                all_primes.push_back(p);
+                if (all_primes.size() == all_primes.capacity())
+                    flush();
+                    */
             }
         cur = new_cur;
         if (cur % 1000 == 0) {

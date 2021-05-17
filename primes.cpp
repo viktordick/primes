@@ -11,6 +11,8 @@
 typedef unsigned long int T;
 typedef std::chrono::steady_clock _clock;
 
+auto starttime = _clock::now();
+
 const size_t BATCHSIZE = 16*1024*1024;
 
 T sqr(T x) {
@@ -89,23 +91,17 @@ class PrimeStorage {
     std::vector<Batch> P;
     std::vector< std::vector<T> > pool;
     size_t count;
-    int loads;
 
     public:
 
     PrimeStorage()
-        :pool(16), count(0)
+        :pool(2), count(0)
     {
     }
 
     size_t size() const {
         return count;
     };
-
-    void reset_loads() {
-        loads = 0;
-    }
-    int get_loads() const { return loads; }
 
     T& operator[](size_t idx) {
         const auto s = BATCHSIZE;
@@ -119,7 +115,6 @@ class PrimeStorage {
                     throw;
                 if (P[k].is_loaded()) {
                     P[i].load(P[k].unload());
-                    loads++;
                     break;
                 }
             }
@@ -171,18 +166,19 @@ class PrimeCalculator {
         // multiple of a known prime after all.
         auto &B = candidates;
 
-        P.reset_loads();
-        auto t = _clock::now();
-
+        const size_t new_cur = cur + 1; // std::min(cur + 128, P.size()-1);
+        if (P[new_cur] > (1 << 31)) {
+            std::cerr << "Overflow" << std::endl;
+            throw;
+        }
         const T start = sqr(P[cur]) + 2;
-        const T new_cur = std::min(cur + 1000, P.size()-1);
         const T end = sqr(P[new_cur]);
         const size_t workmem = (end-start) >> 24;
         B.resize((end-start)/2);
         for (size_t i = 0; i<B.size(); i++)
             B[i] = true;
 
-        for (size_t i=0; i<P.size(); i++) {
+        for (size_t i=0; i<new_cur; i++) {
             const auto p = P[i];
             T first = p*((start-1)/p+1);  // first multiple of p in range
             // we only check odd numbers
@@ -198,15 +194,12 @@ class PrimeCalculator {
                 P.append(start+2*i);
             }
         cur = new_cur;
-
-        std::cout
-            << std::chrono::duration<double>(_clock::now() - t).count() << "s "
-            << P.size() << " primes below "
-            << sqr(P[cur])
-            << ", " << P.batches() << " batches"
-            << ", " << workmem << "MB workmem"
-            << ", " << P.get_loads() << " loads"
-            << std::endl;
+        if (cur % 100 == 0)
+            std::cout
+                << std::fixed << std::chrono::duration<double>(_clock::now() - starttime).count() << "s "
+                << "π(" << P[cur] << "²) = " << (1+P.size())
+                << ", " << workmem << "MB workmem"
+                << std::endl;
     }
 
 };

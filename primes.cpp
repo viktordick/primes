@@ -17,45 +17,66 @@ T sqr(T x) {
 };
 
 class PrimeCalculator {
-    std::vector<uint32_t> P;
-    std::vector<T> all_primes;
+    std::vector<uint32_t> P = {3,5,7};
     // candidates are the odd numbers from p_{c}^2 to p_{c+1}^2, excluding.
     // C contains booleans for all these candidates, which are set to true at
     // first and then switched to false if they are a multiple of a known prime
     // after all.
     std::vector<char> C;
     // Means we have computed all primes until primes[cur]^2
-    size_t cur;
+    size_t cur = 0;
 
-    size_t count;
+    size_t count = 4;
+    std::vector<unsigned char> A;
+    std::vector<uint32_t> archive_segment_sizes;
+    T archive_prefix = 0;
 
     public:
 
     PrimeCalculator() {
         P.reserve(16*1024*1024);
-        // all_primes.reserve(16*1024*1024);
-        all_primes.push_back(2);
-        all_primes.push_back(3);
-        all_primes.push_back(5);
-        all_primes.push_back(7);
-        P.push_back(3);
-        P.push_back(5);
-        P.push_back(7);
-        cur = 0;
-        count = 4;
+        A.reserve(3 * (1 << 28));
+        archive_segment_sizes.resize(256, 0);
+        for (auto p: P)
+            archive(p);
     };
 
-    void flush() {
-        std::ofstream f("primes.dat", std::ios::binary | std::ios::in);
-        T target = (count - all_primes.size()) * sizeof(T);
-        f.seekp(target);
-        f.write((const char*)&(all_primes[0]), all_primes.size() * sizeof(T));
-        f.close();
-        all_primes.clear();
+    void archive(T value) {
+        // drop last bit, all our primes are odd
+        value >>= 1;
+        // The highest 4 bytes are the prefix, for each prefix we start a
+        // separate file. The 5th byte is the segment. The first KB of the file
+        // contains the number of values of each segment. Afterwards, each
+        // value is stored with the remaining 3 bytes.
+        T prefix = (value >> 32);
+
+        if (prefix != archive_prefix) {
+            std::stringstream s;
+            s << "archive/" << std::setfill('0') << std::setw(8)
+                << std::hex << prefix;
+            std::ofstream f(s.str(), std::ios::binary);
+            f.write((const char*)&archive_segment_sizes[0],
+                    archive_segment_sizes.size()*sizeof(uint32_t));
+            f.write((const char*)&A[0], A.size());
+            f.close();
+
+            A.clear();
+            for (auto &s: archive_segment_sizes)
+                s = 0;
+            archive_prefix = prefix;
+        }
+        // The segment is the 5th byte
+        archive_segment_sizes[(value >> 24) & 0xff]++;
+        // push three bytes to archive
+        for (int i=16; i>=0; i-=8)
+            A.push_back((value >> i) & 0xff);
     }
 
+    // Compute more primes. Assuming we have computed all primes until p_{n}^2,
+    // where p_{n} is the nth prime, this computes all primes until p_{n+1}^2.
+    // The prime is archived and, if it is small enouth that it might be
+    // relevant for further computations, stored in memory.
     void extend() {
-
         const size_t new_cur = cur + 1;
         if (new_cur == P.size()) {
             std::cerr << "Capacity reached." << std::endl;
@@ -84,11 +105,7 @@ class PrimeCalculator {
                 const auto p = start + 2*i;
                 if (P.size() < P.capacity() && uint32_t(p) == p)
                     P.push_back(p);
-                /*
-                all_primes.push_back(p);
-                if (all_primes.size() == all_primes.capacity())
-                    flush();
-                    */
+                archive(p);
             }
         cur = new_cur;
         if (cur % 1000 == 0) {

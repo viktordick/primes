@@ -1,4 +1,4 @@
 .sconsign.dblite
 primes
 *.o
-result
+archive

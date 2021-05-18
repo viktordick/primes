@@ -49,9 +49,11 @@ class PrimeCalculator {
         if (prefix != archive_prefix) {
             std::stringstream s;
             s << "archive/" << std::setfill('0') << std::setw(8)
-                << std::hex << prefix;
+                << std::hex << archive_prefix;
             std::ofstream f(s.str(), std::ios::binary);
             f.write((const char*)&A[0], A.size());
+            if (f.fail())
+                throw;
             f.close();
 
             for (auto &a: A)

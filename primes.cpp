@@ -28,15 +28,15 @@ class PrimeCalculator {
 
     size_t count = 4;
     std::vector<unsigned char> A;
-    std::vector<uint32_t> archive_segment_sizes;
+    std::vector<uint16_t> archive_segment_sizes;
     T archive_prefix = 0;
 
     public:
 
     PrimeCalculator() {
         P.reserve(16*1024*1024);
-        A.reserve(3 * (1 << 28));
-        archive_segment_sizes.resize(256, 0);
+        A.reserve(2 * (1 << 28));
+        archive_segment_sizes.resize(256*256, 0);
         for (auto p: P)
             archive(p);
     };
@@ -45,9 +45,9 @@ class PrimeCalculator {
         // drop last bit, all our primes are odd
         value >>= 1;
         // The highest 4 bytes are the prefix, for each prefix we start a
-        // separate file. The 5th byte is the segment. The first KB of the file
-        // contains the number of values of each segment. Afterwards, each
-        // value is stored with the remaining 3 bytes.
+        // separate file. The 5th and 6th bytes form the segment. The header of
+        // the file contains the number of values of each segment. Afterwards,
+        // each value is stored with the remaining 2 bytes.
         T prefix = (value >> 32);
 
         if (prefix != archive_prefix) {
@@ -56,7 +56,7 @@ class PrimeCalculator {
                 << std::hex << prefix;
             std::ofstream f(s.str(), std::ios::binary);
             f.write((const char*)&archive_segment_sizes[0],
-                    archive_segment_sizes.size()*sizeof(uint32_t));
+                    archive_segment_sizes.size()*sizeof(uint16_t));
             f.write((const char*)&A[0], A.size());
             f.close();
 
@@ -65,11 +65,11 @@ class PrimeCalculator {
                 s = 0;
             archive_prefix = prefix;
         }
-        // The segment is the 5th byte
-        archive_segment_sizes[(value >> 24) & 0xff]++;
-        // push three bytes to archive
-        for (int i=16; i>=0; i-=8)
-            A.push_back((value >> i) & 0xff);
+        // The segment is the 5th+6th byte
+        archive_segment_sizes[(value >> 16) & 0xffff]++;
+        // push two bytes to archive
+        A.push_back((value>>8)&0xff);
+        A.push_back(value&0xff);
     }
 
     // Compute more primes. Assuming we have computed all primes until p_{n}^2,

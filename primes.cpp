@@ -7,6 +7,8 @@
 #include <locale>
 #include <iomanip>
 
+#define ARCHIVE 0
+
 typedef unsigned long int T;
 typedef std::chrono::steady_clock _clock;
 
@@ -18,6 +20,8 @@ T sqr(T x) {
 
 class PrimeCalculator {
     std::vector<uint32_t> P = {3,5,7};
+    uint64_t target = 8;
+    int ln2target = 3;
     // candidates are the odd numbers from p_{c}^2 to p_{c+1}^2, excluding.
     // C contains booleans for all these candidates, which are set to true at
     // first and then switched to false if they are a multiple of a known prime
@@ -34,9 +38,11 @@ class PrimeCalculator {
 
     PrimeCalculator() {
         P.reserve(16*1024*1024);
+#if ARCHIVE
         A.resize(T(1) << 29, 0);
         for (auto p: P)
             archive(p);
+#endif
     };
 
     void archive(T value) {
@@ -92,18 +98,29 @@ class PrimeCalculator {
 
         for (T i=0; i<C.size(); i++)
             if (C[i]) {
-                count++;
                 const auto p = start + 2*i;
                 if (P.size() < P.capacity() && uint32_t(p) == p)
                     P.push_back(p);
+                if (p > target) {
+                    std::cout
+                        << std::fixed << std::chrono::duration<double>(_clock::now() - starttime).count() << "s: "
+                        << "π(2^" << std::setw(11) << ln2target << ") = "
+                        << "π(" << std::setw(12) << target << ") = "
+                        << count << std::endl;
+                    ln2target++;
+                    target *= 2;
+                }
+#if ARCHIVE
                 archive(p);
+#endif
+                count++;
             }
         cur = new_cur;
         if (cur % 1000 == 0) {
             std::cout
                 << std::fixed << std::chrono::duration<double>(_clock::now() - starttime).count() << "s: "
-                << "π(" << P[cur] << "²) = " 
-                << "π(" << sqr(P[cur]) << ") = " 
+                << "π(" << std::setw(12) << P[cur] << "²) = "
+                << "π(" << std::setw(12) << sqr(P[cur]) << ") = "
                 << count
                 << std::endl;
         }

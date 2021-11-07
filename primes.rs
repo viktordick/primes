@@ -1,4 +1,5 @@
 use std::time::Instant;
+use crossbeam::{channel,thread};
 
 fn sqr(x: u32) -> u64 {
     return (x as u64)*(x as u64);
@@ -86,9 +87,15 @@ impl Calc {
     }
 }
 
-fn print(start: Instant, value: usize) {
-    let elapsed = start.elapsed();
-    println!("{}.{} {}", elapsed.as_secs(), elapsed.subsec_millis(), value);
+fn print(start_time: Instant, start: usize, end: usize, value: usize) {
+    let elapsed = start_time.elapsed();
+    println!("{}.{} {} - {}: {}",
+             elapsed.as_secs(),
+             elapsed.subsec_millis(),
+             end,
+             start,
+             value,
+             );
 }
 
 fn main() {
@@ -96,14 +103,28 @@ fn main() {
 
     let mut calc = Calc::new();
     // 65521 is the largest prime below 2^16, so this computes all primes
-    // until 2^32.
+    // until 2^32 - which is enough to count all until 2^64
     calc.compute(sqr(65521));
-    print(start, calc.p.len());
     // The index of 65521
     let mut cur: usize = 6539;
-    for _i in 0..5 {
-        let tgt = cur + 1024;
-        print(start, calc.count(cur, tgt));
-        cur = tgt;
-    }
+    print(start, 0, cur, calc.p.len());
+
+    let (tx, rx) = channel::bounded(1);
+    thread::scope(|s| {
+        for _i in 0..7 {
+            let tasks = rx.clone();
+            s.spawn(|_| {
+                let tasks = tasks;
+                loop {
+                    let cur = tasks.recv().unwrap();
+                    print(start, cur, cur+1024, calc.count(cur, cur+1024));
+                }
+            });
+        }
+
+        loop {
+            tx.send(cur).unwrap();
+            cur += 1024;
+        }
+    }).unwrap();
 }

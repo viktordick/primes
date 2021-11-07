@@ -3,3 +3,11 @@ primes
 *.o
 archive
 sum
+
+
+# Added by cargo
+
+/target
+*.dat
+fit.log
+Cargo.lock

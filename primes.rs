@@ -1,5 +1,5 @@
 use std::time::Instant;
-use crossbeam::{channel,thread};
+use crossbeam::{channel::bounded,thread::scope};
 
 fn sqr(x: u32) -> u64 {
     return (x as u64)*(x as u64);
@@ -7,6 +7,7 @@ fn sqr(x: u32) -> u64 {
 
 struct Calc {
     p: Vec<u32>,
+    start_time: Instant,
 }
 
 impl Calc {
@@ -15,17 +16,13 @@ impl Calc {
         vec.push(3);
         vec.push(5);
         vec.push(7);
-        Calc{p: vec}
+        Calc{p: vec, start_time: Instant::now()}
     }
-    fn sieve(&self,
-             cur: usize,
-             c: &mut Vec<bool>,
-             ) -> u64 {
-        /* Compute primes between p[cur]^2 and p[cur+1]^2, excluding.
-         * Resizes c so it holds a bool for each odd number in that range.
-         * Performes the sieve on this range and returns the offset such
-         * that c[i] contains whether offset+2*i is prime or not.
-         */
+    /* Compute primes between p[cur]^2 and p[cur+1]^2, excluding. Resizes c so it holds a bool for
+     * each odd number in that range. Performes the sieve on this range and returns the offset
+     * such that c[i] contains whether offset+2*i is prime or not.
+     */
+    fn sieve(&self, cur: usize, c: &mut Vec<bool>) -> u64 {
         let start = sqr(self.p[cur]) + 2;
         let end = sqr(self.p[cur+1]);
 
@@ -47,37 +44,27 @@ impl Calc {
         start
     }
 
-    fn compute(&mut self, until: u64) {
-        /* Compute primes from self.p[0]^2=9 up to `until`*/
+    /* Compute generating primes between 9 and self.p[endidx]^2 and fill self.p with them.*/
+    fn compute(&mut self, endidx: usize) {
         let mut c: Vec<bool> = vec![];
-        for cur in 0 ..= until as usize{
-            let start = self.sieve(cur, &mut c);
+        for cur in 0 ..= endidx {
+            let start = self.sieve(cur, &mut c) as usize;
             for i in 0 .. c.len() {
-                let p = start + 2*i as u64;
-                if p > until {
-                    return;
-                }
                 if c[i] {
-                    self.p.push(p as u32);
+                    self.p.push((start+2*i) as u32);
                 }
             }
         }
     }
 
+    /* Count primes between self.p[startidx]^2 and self.p[endidx]^2.*/
     fn count(&self, startidx: usize, endidx: usize) -> usize {
-        /* Count primes between self.p[startidx]^2 and self.p[endidx]^2.*/
-        let target = sqr(self.p[endidx]);
         let mut c: Vec<bool> = vec![];
         let mut result: usize = 0;
 
         for cur in startidx .. endidx {
-            let start = self.sieve(cur, &mut c);
-
+            self.sieve(cur, &mut c);
             for i in 0 .. c.len() {
-                let p = start + 2*i as u64;
-                if p > target {
-                    return result;
-                }
                 if c[i] {
                     result += 1;
                 }
@@ -85,46 +72,42 @@ impl Calc {
         }
         result
     }
-}
 
-fn print(start_time: Instant, start: usize, end: usize, value: usize) {
-    let elapsed = start_time.elapsed();
-    println!("{}.{} {} - {}: {}",
-             elapsed.as_secs(),
-             elapsed.subsec_millis(),
-             end,
-             start,
-             value,
-             );
+    fn print(&self, startidx: usize, endidx: usize, result: usize) {
+        let elapsed = self.start_time.elapsed();
+        println!(
+            "{:>5}.{:03}s: π({:>12}²) - π({:>12}²) = {}",
+            elapsed.as_secs(), elapsed.subsec_millis(),
+            self.p[endidx],
+            self.p[startidx],
+            result,
+        );
+    }
 }
 
 fn main() {
-    let start = Instant::now();
-
     let mut calc = Calc::new();
-    // 65521 is the largest prime below 2^16, so this computes all primes
-    // until 2^32 - which is enough to count all until 2^64
-    calc.compute(sqr(65521));
-    // The index of 65521
-    let mut cur: usize = 6539;
-    print(start, 0, cur, calc.p.len());
+    let mut cur: usize = 6540;
+    calc.compute(cur);
+    calc.print(0, cur, calc.p.len());
 
-    let (tx, rx) = channel::bounded(1);
-    thread::scope(|s| {
-        for _i in 0..7 {
-            let tasks = rx.clone();
+    let (sender, receiver) = bounded(0);
+
+    scope(|s| {
+        for _ in 0..8 {
             s.spawn(|_| {
-                let tasks = tasks;
-                loop {
-                    let cur = tasks.recv().unwrap();
-                    print(start, cur, cur+1024, calc.count(cur, cur+1024));
+                let receiver = receiver.clone();
+                for (cur,nxt) in receiver {
+                    let count = calc.count(cur, nxt);
+                    calc.print(cur, nxt, count);
                 }
             });
         }
 
         loop {
-            tx.send(cur).unwrap();
-            cur += 1024;
+            let tgt = cur+1024;
+            sender.send((cur,tgt)).unwrap();
+            cur = tgt;
         }
     }).unwrap();
 }

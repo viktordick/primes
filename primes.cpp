@@ -11,6 +11,8 @@
 #include <locale>
 #include <iomanip>
 
+#include <boost/dynamic_bitset.hpp>
+
 typedef uint64_t T;
 typedef std::chrono::steady_clock _clock;
 
@@ -34,12 +36,11 @@ class PrimeCalculator {
      * on this range and returns the offset such that c[i] contains whether
      * offset+2*i is prime or not.
      */
-    size_t sieve(size_t cur, std::vector<bool> &c) const {
+    size_t sieve(size_t cur, boost::dynamic_bitset<> &c) const {
         const T start = sqr(T(P[cur])) + 2;
         const T end = sqr(T(P[cur+1]));
-        c.resize((end-start)/2);
-        for (size_t i = 0; i<c.size(); i++)
-            c[i] = true;
+        c.clear();
+        c.resize((end-start)/2, true);
 
         for (size_t i=0; i<=cur; i++) {
             const auto p = T(P[i]);
@@ -57,7 +58,7 @@ class PrimeCalculator {
     /* Compute generating primes between 9 and P[endidx]^2 and fill P with
      * them.*/
     void compute(size_t endidx) {
-        std::vector<bool> c;
+        boost::dynamic_bitset<> c;
         for (size_t cur = 0; cur<endidx; cur++) {
             auto start = sieve(cur, c);
             for (size_t i = 0; i<c.size(); i++) {
@@ -70,13 +71,10 @@ class PrimeCalculator {
     /* Count primes between P[startidx]^2 and P[endidx]^2*/
     size_t count(size_t startidx, size_t endidx) const {
         size_t result = 0;
-        std::vector<bool> c;
+        boost::dynamic_bitset<> c;
         for (size_t cur = startidx; cur<endidx; cur++) {
             sieve(cur, c);
-            for (size_t i = 0; i<c.size(); i++) {
-                if (c[i])
-                    result++;
-            }
+            result += c.count();
         }
         return result;
     }
@@ -106,7 +104,7 @@ int main(int argc, char** argv) {
     // 65521=P[6540] is the largest prime below 2^16
     size_t cur = 6540;
     p.compute(cur);
-    p.print(0, cur, P.size());
+    p.print(0, cur, P.size()-4);
 
     #pragma omp parallel
     {

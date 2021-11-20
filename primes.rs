@@ -49,7 +49,7 @@ impl Calc {
     /* Compute generating primes between 9 and self.p[endidx]^2 and fill self.p with them.*/
     fn compute(&mut self, endidx: usize) {
         let mut c: BitVec = BitVec::new();
-        for cur in 0 ..= endidx {
+        for cur in 0 .. endidx {
             let start = self.sieve(cur, &mut c) as usize;
             for i in 0 .. c.len() {
                 if c[i] {
@@ -87,9 +87,9 @@ fn main() {
     let mut calc = Calc::new();
     let mut cur: usize = 6540;
     calc.compute(cur);
-    calc.print(0, cur, calc.p.len());
+    calc.print(0, cur, calc.p.len()-3);
 
-    let (sender, receiver) = bounded(0);
+    let (sender, receiver) = bounded(10);
 
     scope(|s| {
         for _ in 0..8 {

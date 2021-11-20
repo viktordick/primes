@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     // 65521=P[6540] is the largest prime below 2^16
     size_t cur = 6540;
     p.compute(cur);
-    p.print(0, cur, P.size()-4);
+    p.print(0, cur, P.size()-3);
 
     #pragma omp parallel
     {

@@ -1,5 +1,6 @@
 use std::time::Instant;
 use crossbeam::{channel::bounded,thread::scope};
+use bitvec::prelude::*;
 
 fn sqr(x: u32) -> u64 {
     return (x as u64)*(x as u64);
@@ -22,7 +23,7 @@ impl Calc {
      * each odd number in that range. Performes the sieve on this range and returns the offset
      * such that c[i] contains whether offset+2*i is prime or not.
      */
-    fn sieve(&self, cur: usize, c: &mut Vec<bool>) -> u64 {
+    fn sieve(&self, cur: usize, c: &mut BitVec) -> u64 {
         let start = sqr(self.p[cur]) + 2;
         let end = sqr(self.p[cur+1]);
 
@@ -37,7 +38,8 @@ impl Calc {
             }
             let mut idx = ((first-start)/2) as usize;
             while idx < c.len() {
-                c[idx] = false;
+                let mut bit = c.get_mut(idx).unwrap();
+                *bit = false;
                 idx += p as usize;
             }
         }
@@ -46,7 +48,7 @@ impl Calc {
 
     /* Compute generating primes between 9 and self.p[endidx]^2 and fill self.p with them.*/
     fn compute(&mut self, endidx: usize) {
-        let mut c: Vec<bool> = vec![];
+        let mut c: BitVec = BitVec::new();
         for cur in 0 ..= endidx {
             let start = self.sieve(cur, &mut c) as usize;
             for i in 0 .. c.len() {
@@ -59,16 +61,12 @@ impl Calc {
 
     /* Count primes between self.p[startidx]^2 and self.p[endidx]^2.*/
     fn count(&self, startidx: usize, endidx: usize) -> usize {
-        let mut c: Vec<bool> = vec![];
+        let mut c: BitVec = BitVec::new();
         let mut result: usize = 0;
 
         for cur in startidx .. endidx {
             self.sieve(cur, &mut c);
-            for i in 0 .. c.len() {
-                if c[i] {
-                    result += 1;
-                }
-            }
+            result += c.count_ones();
         }
         result
     }

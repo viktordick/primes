@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 spmc = "0.3.0"
 crossbeam = "0.8.1"
-bitvec = "0.22.3"
+bitvec = "1"
 
 [[bin]]
 name = "primes"

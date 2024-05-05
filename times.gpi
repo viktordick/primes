@@ -1,8 +1,0 @@
-#!/usr/bin/env gplpdf
-set yr [0:]
-
-set label at graph 1.00,0.04 r 'time [s]'
-set label at graph 0.01,0.95 '\# primes'
-plot '< cat times-g++.dat | sed -e s:\\.::g -e s:,:.:g' u 1:8 smooth cumulative w lp t 'g++', \
-     '< cat times-clang.dat | sed -e s:\\.::g -e s:,:.:g' u 1:8 smooth cumulative w lp t 'clang', \
-     'times-rust.dat' u 1:8 smooth cumulative w lp t 'rust'

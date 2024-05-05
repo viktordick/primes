@@ -1,0 +1,20 @@
+#!/usr/bin/python
+import matplotlib.pyplot as plt
+
+keys = ['g++', 'clang', 'rust']
+plt.figure()
+for key in keys:
+    times = []
+    counts = []
+    count = 0
+    with open(f'times-{key}.dat') as f:
+        count = 0
+        for line in f:
+            words = line.split()
+            times.append(float(words[0][:-2]))
+            count += int(words[-1])
+            counts.append(count)
+        plt.plot(times, counts, label=key, marker='+')
+plt.xlabel('Time [s]')
+plt.legend()
+plt.show()
